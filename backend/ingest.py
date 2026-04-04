@@ -71,16 +71,14 @@ def extract_text_from_plain_file(file_bytes):
     return file_bytes.decode("utf-8", errors="ignore")
 
 def extract_text(uploaded_file):
-    filename = uploaded_file.name
+    filename = uploaded_file["filename"]
     extension = os.path.splitext(filename)[1].lower()
-    file_bytes = uploaded_file.read()
+    file_bytes = uploaded_file["file_bytes"]
 
     if extension == ".pdf":
         text = extract_text_from_pdf(file_bytes)
     elif extension == ".docx":
         text = extract_text_from_docx(file_bytes)
-    elif extension in TEXT_FILE_EXTENSIONS:
-        text = extract_text_from_plain_file(file_bytes)
     else:
         text = extract_text_from_plain_file(file_bytes)
 
