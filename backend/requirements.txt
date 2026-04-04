@@ -1,5 +1,9 @@
+fastapi
+uvicorn
+python-multipart
 openai
 chromadb
 python-dotenv
 langchain-text-splitters
 pypdf
+python-docx
