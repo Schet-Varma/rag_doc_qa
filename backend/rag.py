@@ -23,6 +23,28 @@ def get_collection():
     chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
     return chroma_client.get_collection(name=COLLECTION_NAME)
 
+def format_source_label(metadata: dict) -> str:
+    source_name = metadata.get("source_name", "Unknown source")
+    page_number = metadata.get("page_number")
+    line_start = metadata.get("line_start")
+    line_end = metadata.get("line_end")
+    paragraph_start = metadata.get("paragraph_start")
+    paragraph_end = metadata.get("paragraph_end")
+
+    if page_number:
+        return f"{source_name} — page {page_number}"
+
+    if line_start and line_end:
+        if line_start == line_end:
+            return f"{source_name} — line {line_start}"
+        return f"{source_name} — lines {line_start}-{line_end}"
+
+    if paragraph_start and paragraph_end:
+        if paragraph_start == paragraph_end:
+            return f"{source_name} — paragraph {paragraph_start}"
+        return f"{source_name} — paragraphs {paragraph_start}-{paragraph_end}"
+
+    return source_name
 
 def retrieve_chunks(question, k=4):
     collection = get_collection()
@@ -36,26 +58,28 @@ def retrieve_chunks(question, k=4):
     documents = results["documents"][0]
     metadatas = results["metadatas"][0]
 
-    chunks = []
+    retrieved_chunks = []
+
     for i in range(len(documents)):
-        chunks.append({
+        metadata = metadatas[i] if i < len(metadatas) else {}
+        retrieved_chunks.append({
             "text": documents[i],
-            "metadata": metadatas[i]
+            "metadata": metadata,
+            "source_label": format_source_label(metadata)
         })
 
-    return chunks
+    return retrieved_chunks
 
 
 def build_context(retrieved_chunks):
-    context_parts = []
+    parts = []
 
     for i, chunk in enumerate(retrieved_chunks, start=1):
-        source_name = chunk["metadata"].get("source_name", "unknown source")
-        chunk_text = chunk["text"]
-        context_parts.append(f"[Source {i}] ({source_name})\n{chunk_text}")
+        parts.append(
+            f"[Source {i}] {chunk['source_label']}\n{chunk['text']}"
+        )
 
-    return "\n\n".join(context_parts)
-
+    return "\n\n".join(parts)
 
 def build_history(chat_history):
     if not chat_history:
@@ -80,7 +104,10 @@ def answer_question(question, chat_history=None, k=4):
         Answer the question using ONLY the context below.
         If the answer is not present in the context, say:
         "I could not find that in the uploaded content."
-
+        Do try very hard to find the content and ignore 
+        the typos in the questions and try to make 
+        sense out of them with the typos.
+        
         Keep the answer clear and short.
 
         Previous conversation:
@@ -91,7 +118,7 @@ def answer_question(question, chat_history=None, k=4):
 
         Question:
         {question}
-        """
+    """
 
     response = client.responses.create(
         model="gpt-4.1-nano",

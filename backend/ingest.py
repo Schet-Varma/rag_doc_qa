@@ -149,13 +149,13 @@ def extract_text(uploaded_file):
     file_bytes = uploaded_file["file_bytes"]
 
     if extension == ".pdf":
-        text = extract_text_from_pdf(file_bytes)
+        chunks = extract_text_from_pdf(file_bytes)
     elif extension == ".docx":
-        text = extract_text_from_docx(file_bytes)
+        chunks = extract_text_from_docx(file_bytes)
     else:
-        text = extract_text_from_plain_file(file_bytes)
+        chunks = extract_text_from_plain_file(file_bytes)
 
-    return filename, text.strip()
+    return filename, chunks
 
 
 def store_chunks(collection, chunks, source_name, source_type):
