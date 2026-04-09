@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import "./App.css";
 
@@ -7,6 +7,7 @@ const API_BASE_URL = "http://127.0.0.1:8000";
 function App() {
   const [files, setFiles] = useState([]);
   const [pastedText, setPastedText] = useState("");
+  const [savedDraftName, setSavedDraftName] = useState("My Notes");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState([]);
@@ -14,6 +15,27 @@ function App() {
   const [uploadMessage, setUploadMessage] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
+
+  useEffect(() => {
+    const savedText = localStorage.getItem("rag_pasted_text");
+    const savedDraft = localStorage.getItem("rag_draft_name");
+
+    if (savedText) {
+      setPastedText(savedText);
+    }
+
+    if (savedDraft) {
+      setSavedDraftName(savedDraft);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("rag_pasted_text", pastedText);
+  }, [pastedText]);
+
+  useEffect(() => {
+    localStorage.setItem("rag_draft_name", savedDraftName);
+  }, [savedDraftName]);
 
   function handleFileChange(event) {
     setFiles(Array.from(event.target.files));
@@ -83,6 +105,13 @@ function App() {
       setIsAsking(false);
     }
   }
+  
+  function clearDraft() {
+    setPastedText("");
+    setSavedDraftName("My Notes");
+    localStorage.removeItem("rag_pasted_text");
+    localStorage.removeItem("rag_draft_name");
+  }
 
   function clearChat() {
     setChatHistory([]);
@@ -94,7 +123,7 @@ function App() {
     <div className="app-container">
       <h1>RAG Document Q&A</h1>
       <p className="subtitle">
-        Upload files, paste text, and ask questions about your content.
+        Upload multiple files, paste notes, and ask grounded questions about your content.
       </p>
 
       <div className="card">
@@ -102,16 +131,30 @@ function App() {
 
         <input type="file" multiple onChange={handleFileChange} />
 
+        <p className="small-label">Saved text draft name</p>
+        <input
+          type="text"
+          value={savedDraftName}
+          onChange={(event) => setSavedDraftName(event.target.value)}
+          placeholder="Name your pasted notes"
+        />
+
         <textarea
-          rows="8"
+          rows="10"
           placeholder="Or paste text here..."
           value={pastedText}
           onChange={(event) => setPastedText(event.target.value)}
         />
 
-        <button onClick={handleUpload} disabled={isUploading}>
-          {isUploading ? "Uploading..." : "Ingest Content"}
-        </button>
+        <div className="button-row">
+          <button onClick={handleUpload} disabled={isUploading}>
+            {isUploading ? "Uploading..." : "Ingest Content"}
+          </button>
+
+          <button className="secondary-button" onClick={clearDraft}>
+            Clear Saved Text
+          </button>
+        </div>
 
         {uploadMessage && <p className="status-message">{uploadMessage}</p>}
       </div>
@@ -149,8 +192,7 @@ function App() {
             {sources.map((source, index) => (
               <details key={index} className="source-item">
                 <summary>
-                  {source.metadata?.source_name || "Unknown source"} — Chunk{" "}
-                  {source.metadata?.chunk_id ?? "N/A"}
+                  {source.source_label || source.metadata?.source_name || "Unknown source"}
                 </summary>
                 <p>{source.text}</p>
               </details>

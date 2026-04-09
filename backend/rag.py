@@ -34,7 +34,7 @@ def format_source_label(metadata: dict) -> str:
     if page_number:
         return f"{source_name} — page {page_number}"
 
-    if line_start and line_end:
+    if line_start is not None and line_end is not None:
         if line_start == line_end:
             return f"{source_name} — line {line_start}"
         return f"{source_name} — lines {line_start}-{line_end}"
@@ -104,9 +104,8 @@ def answer_question(question, chat_history=None, k=4):
         Answer the question using ONLY the context below.
         If the answer is not present in the context, say:
         "I could not find that in the uploaded content."
-        Do try very hard to find the content and ignore 
-        the typos in the questions and try to make 
-        sense out of them with the typos.
+        Try to handle minor spelling mistakes or typos in
+        the user's question when possible.
         
         Keep the answer clear and short.
 
