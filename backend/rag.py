@@ -10,6 +10,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CHROMA_PATH = "chroma_db"
 COLLECTION_NAME = "rag_docs"
 
+
 def get_embedding(text):
     response = client.embeddings.create(
         model="text-embedding-3-small",
@@ -22,28 +23,6 @@ def get_collection():
     chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
     return chroma_client.get_collection(name=COLLECTION_NAME)
 
-def format_source_label(metadata: dict) -> str:
-    source_name = metadata.get("source_name", "Unknown source")
-    page_number = metadata.get("page_number")
-    line_start = metadata.get("line_start")
-    line_end = metadata.get("line_end")
-    paragraph_start = metadata.get("paragraph_start")
-    paragraph_end = metadata.get("paragraph_end")
-
-    if page_number:
-        return f"{source_name} — page {page_number}"
-
-    if line_start is not None and line_end is not None:
-        if line_start == line_end:
-            return f"{source_name} — line {line_start}"
-        return f"{source_name} — lines {line_start}-{line_end}"
-
-    if paragraph_start and paragraph_end:
-        if paragraph_start == paragraph_end:
-            return f"{source_name} — paragraph {paragraph_start}"
-        return f"{source_name} — paragraphs {paragraph_start}-{paragraph_end}"
-
-    return source_name
 
 def format_source_label(metadata):
     source_name = metadata.get("source_name", "unknown source")
@@ -78,15 +57,14 @@ def retrieve_chunks(question, k=4):
         n_results=k
     )
 
-    documents = results["documents"][0]
-    metadatas = results["metadatas"][0]
+    documents = results.get("documents", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
 
     retrieved_chunks = []
 
     for i in range(len(documents)):
         metadata = metadatas[i] if i < len(metadatas) else {}
-
-        chunks.append({
+        retrieved_chunks.append({
             "text": documents[i],
             "metadata": metadata,
             "source_label": format_source_label(metadata)
@@ -101,11 +79,10 @@ def build_context(retrieved_chunks):
     for i, chunk in enumerate(retrieved_chunks, start=1):
         source_label = chunk["source_label"]
         chunk_text = chunk["text"]
-        context_parts.append(f"[Source {i}] {source_label}\n{chunk_text}")
-
-    return "\n\n".join(context_parts)
+        parts.append(f"[Source {i}] {source_label}\n{chunk_text}")
 
     return "\n\n".join(parts)
+
 
 def build_history(chat_history):
     if not chat_history:
@@ -125,25 +102,25 @@ def answer_question(question, chat_history=None, k=4):
     history_text = build_history(chat_history)
 
     prompt = f"""
-        You are a helpful document Q&A assistant.
+You are a helpful document Q&A assistant.
 
-        Answer the question using ONLY the context below.
-        If the answer is not present in the context, say:
-        "I could not find that in the uploaded content."
+Answer the question using ONLY the context below.
+If the answer is not present in the context, say:
+"I could not find that in the uploaded content."
 
-        Try to handle minor spelling mistakes or typos in the user's question when possible.
+Try to handle minor spelling mistakes or typos in the user's question when possible.
 
-        Keep the answer clear and short.
+Keep the answer clear and short.
 
-        Previous conversation:
-        {history_text}
+Previous conversation:
+{history_text}
 
-        Context:
-        {context}
+Context:
+{context}
 
-        Question:
-        {question}
-    """
+Question:
+{question}
+"""
 
     response = client.responses.create(
         model="gpt-4.1-nano",
@@ -155,4 +132,3 @@ def answer_question(question, chat_history=None, k=4):
         "answer": response.output_text,
         "sources": retrieved_chunks
     }
-    
