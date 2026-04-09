@@ -44,31 +44,104 @@ def get_collection(reset_db=True):
     except Exception:
         return chroma_client.create_collection(name=COLLECTION_NAME)
 
+def split_text_into_chunks(text):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=100
+    )
+    return splitter.split_text(text)
+
 def extract_text_from_pdf(file_bytes):
     reader = PdfReader(BytesIO(file_bytes))
-    pages = []
+    extracted = []
 
-    for page in reader.pages:
+    for page_index, page in enumerate(reader.pages):
         page_text = page.extract_text()
-        if page_text:
-            pages.append(page_text)
+        if not page_text or not page_text.strip():
+            continue
+        page_chunks = split_text_into_chunks(page_text)
 
-    return "\n".join(pages)
+        for chunks in page_chunks:
+            extracted.append({
+                "text": chunk,
+                "page_number": page_index + 1,
+                "line_start": None,
+                "line_end": None,
+                "paragraph_start": None,
+                "paragraph_end": None
+            })
+
+    return extracted
 
 
 def extract_text_from_docx(file_bytes):
     doc = Document(BytesIO(file_bytes))
-    paragraphs = []
+    extracted = []
 
-    for paragraph in doc.paragraphs:
-        if paragraph.text.strip():
-            paragraphs.append(paragraph.text)
+    paragraphs = []
+    for i, paragraph in enumerate(doc.paragraphs):
+        text = paragraph.text.strip():
+        if text:
+            paragraphs.append((i + 1, text))
+    
+    for para_num, text in paragraphs:
+        para_chunks = split_text_into_chunks(text)
+    
+        for chunks in para_chunks:
+            extracted.append({
+                "page_number": page_index + 1,
+                "line_start": None,
+                "line_end": None,
+                "paragraph_start": para_num,
+                "paragraph_end": para_num
+            })
 
     return "\n".join(paragraphs)
 
 
 def extract_text_from_plain_file(file_bytes):
-    return file_bytes.decode("utf-8", errors="ignore")
+    text = file_bytes.decode("utf-8", errors="ignore")
+    if not text:
+        return []
+
+    lines = text.splitlines()
+    extracted = []
+
+    current_lines = []
+    current_start = None
+
+    for i, line in enumerate(lines, start=1):
+        if current_start is None:
+            current_start = i
+
+        current_lines.append(line)
+        candidate_text = "\n".join(current_lines)
+
+        if len(candidate_text) >= 500:
+            extracted.append({
+                "text": candidate_text,
+                "page_number": None,
+                "line_start": current_start,
+                "line_end": i,
+                "paragraph_start": None,
+                "paragraph_end": None
+            })
+
+            overlap_lines = current_lines[-3:] if len(current_lines) >= 3 else current_lines[:]
+            current_lines = overlap_lines
+            current_start = i - len(overlap_lines) + 1
+
+    if current_lines:
+        extracted.append({
+            "text": "\n".join(current_lines),
+            "page_number": None,
+            "line_start": current_start,
+            "line_end": current_start + len(current_lines) - 1,
+            "paragraph_start": None,
+            "paragraph_end": None
+        })
+
+    return extracted
 
 def extract_text(uploaded_file):
     filename = uploaded_file["filename"]
@@ -85,33 +158,38 @@ def extract_text(uploaded_file):
     return filename, text.strip()
 
 
-def split_text_into_chunks(text):
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100
-    )
-    return splitter.split_text(text)
-
 def store_chunks(collection, chunks, source_name, source_type):
     stored_count = 0
     safe_source_name = source_name.replace(" ", "_")
 
     for i, chunk in enumerate(chunks):
+        chunk_text = chunk_data["text"].strip()
+        if not chunk_text:
+            continue
         embedding = get_embedding(chunk)
 
         collection.add(
             ids=[f"{safe_source_name}_{i}"],
             documents=[chunk],
-            metadatas=[{
+            metadatas={
                 "source_name": source_name,
                 "source_type": source_type,
-                "chunk_id": i
-            }],
-            embeddings=[embedding]
+                "chunk_id": i,
+                "page_number": chunk_data["page_number"],
+                "line_start": chunk_data["line_start"],
+                "line_end": chunk_data["line_end"],
+                "paragraph_start": chunk_data["paragraph_start"],
+                "paragraph_end": chunk_data["paragraph_end"]
+            }
+
+            collection.add(
+                ids=[f"{safe_source_name}_{i}"],
+                documents=[chunk_text],
+                metadatas=[metadata],
+                embeddings=[embedding]
+            )
         )
-
         stored_count += 1
-
     return stored_count
 
 
@@ -120,10 +198,10 @@ def ingest_sources(uploaded_files=None, pasted_text=None, reset_db=True):
     total_chunks = 0
 
     if pasted_text and pasted_text.strip():
-        chunks = split_text_into_chunks(pasted_text.strip())
+        pasted_chunks = split_text_into_chunks(pasted_text.encode("utf-8"))
         total_chunks += store_chunks(
             collection=collection,
-            chunks=chunks,
+            chunks=pasted_chunks,
             source_name="Pasted Text",
             source_type="pasted_text"
         )
