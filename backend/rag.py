@@ -24,6 +24,30 @@ def get_collection():
     return chroma_client.get_collection(name=COLLECTION_NAME)
 
 
+def format_source_label(metadata):
+    source_name = metadata.get("source_name", "unknown source")
+    page_number = metadata.get("page_number")
+    line_start = metadata.get("line_start")
+    line_end = metadata.get("line_end")
+    paragraph_start = metadata.get("paragraph_start")
+    paragraph_end = metadata.get("paragraph_end")
+
+    if page_number is not None:
+        return f"{source_name} — page {page_number}"
+
+    if line_start is not None and line_end is not None:
+        if line_start == line_end:
+            return f"{source_name} — line {line_start}"
+        return f"{source_name} — lines {line_start}-{line_end}"
+
+    if paragraph_start is not None and paragraph_end is not None:
+        if paragraph_start == paragraph_end:
+            return f"{source_name} — paragraph {paragraph_start}"
+        return f"{source_name} — paragraphs {paragraph_start}-{paragraph_end}"
+
+    return source_name
+
+
 def retrieve_chunks(question, k=4):
     collection = get_collection()
     question_embedding = get_embedding(question)
@@ -38,9 +62,12 @@ def retrieve_chunks(question, k=4):
 
     chunks = []
     for i in range(len(documents)):
+        metadata = metadatas[i] if i < len(metadatas) else {}
+
         chunks.append({
             "text": documents[i],
-            "metadata": metadatas[i]
+            "metadata": metadata,
+            "source_label": format_source_label(metadata)
         })
 
     return chunks
@@ -50,9 +77,9 @@ def build_context(retrieved_chunks):
     context_parts = []
 
     for i, chunk in enumerate(retrieved_chunks, start=1):
-        source_name = chunk["metadata"].get("source_name", "unknown source")
+        source_label = chunk["source_label"]
         chunk_text = chunk["text"]
-        context_parts.append(f"[Source {i}] ({source_name})\n{chunk_text}")
+        context_parts.append(f"[Source {i}] {source_label}\n{chunk_text}")
 
     return "\n\n".join(context_parts)
 
@@ -75,23 +102,25 @@ def answer_question(question, chat_history=None, k=4):
     history_text = build_history(chat_history)
 
     prompt = f"""
-        You are a helpful document Q&A assistant.
+You are a helpful document Q&A assistant.
 
-        Answer the question using ONLY the context below.
-        If the answer is not present in the context, say:
-        "I could not find that in the uploaded content."
+Answer the question using ONLY the context below.
+If the answer is not present in the context, say:
+"I could not find that in the uploaded content."
 
-        Keep the answer clear and short.
+Try to handle minor spelling mistakes or typos in the user's question when possible.
 
-        Previous conversation:
-        {history_text}
+Keep the answer clear and short.
 
-        Context:
-        {context}
+Previous conversation:
+{history_text}
 
-        Question:
-        {question}
-        """
+Context:
+{context}
+
+Question:
+{question}
+"""
 
     response = client.responses.create(
         model="gpt-4.1-nano",
