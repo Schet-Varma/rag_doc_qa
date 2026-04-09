@@ -22,6 +22,28 @@ def get_collection():
     chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
     return chroma_client.get_collection(name=COLLECTION_NAME)
 
+def format_source_label(metadata: dict) -> str:
+    source_name = metadata.get("source_name", "Unknown source")
+    page_number = metadata.get("page_number")
+    line_start = metadata.get("line_start")
+    line_end = metadata.get("line_end")
+    paragraph_start = metadata.get("paragraph_start")
+    paragraph_end = metadata.get("paragraph_end")
+
+    if page_number:
+        return f"{source_name} — page {page_number}"
+
+    if line_start is not None and line_end is not None:
+        if line_start == line_end:
+            return f"{source_name} — line {line_start}"
+        return f"{source_name} — lines {line_start}-{line_end}"
+
+    if paragraph_start and paragraph_end:
+        if paragraph_start == paragraph_end:
+            return f"{source_name} — paragraph {paragraph_start}"
+        return f"{source_name} — paragraphs {paragraph_start}-{paragraph_end}"
+
+    return source_name
 
 def format_source_label(metadata):
     source_name = metadata.get("source_name", "unknown source")
@@ -59,7 +81,8 @@ def retrieve_chunks(question, k=4):
     documents = results["documents"][0]
     metadatas = results["metadatas"][0]
 
-    chunks = []
+    retrieved_chunks = []
+
     for i in range(len(documents)):
         metadata = metadatas[i] if i < len(metadatas) else {}
 
@@ -69,11 +92,11 @@ def retrieve_chunks(question, k=4):
             "source_label": format_source_label(metadata)
         })
 
-    return chunks
+    return retrieved_chunks
 
 
 def build_context(retrieved_chunks):
-    context_parts = []
+    parts = []
 
     for i, chunk in enumerate(retrieved_chunks, start=1):
         source_label = chunk["source_label"]
@@ -82,6 +105,7 @@ def build_context(retrieved_chunks):
 
     return "\n\n".join(context_parts)
 
+    return "\n\n".join(parts)
 
 def build_history(chat_history):
     if not chat_history:

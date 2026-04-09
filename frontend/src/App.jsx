@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import "./App.css";
 
@@ -6,7 +6,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000
 
 function App() {
   const [files, setFiles] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [pastedText, setPastedText] = useState("");
+  const [savedDraftName, setSavedDraftName] = useState("My Notes");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState([]);
@@ -14,6 +16,33 @@ function App() {
   const [uploadMessage, setUploadMessage] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
+
+  useEffect(() => {
+    fetchDocuments();
+
+    const savedText = localStorage.getItem("rag_pasted_text");
+    const savedDraft = localStorage.getItem("rag_draft_name");
+
+    if (savedText) setPastedText(savedText);
+    if (savedDraft) setSavedDraftName(savedDraft);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("rag_pasted_text", pastedText);
+  }, [pastedText]);
+
+  useEffect(() => {
+    localStorage.setItem("rag_draft_name", savedDraftName);
+  }, [savedDraftName]);
+
+  async function fetchDocuments() {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/documents`);
+      setDocuments(response.data.documents || []);
+    } catch (error) {
+      console.error("Failed to fetch documents");
+    }
+  }
 
   function handleFileChange(event) {
     setFiles(Array.from(event.target.files));
@@ -32,7 +61,7 @@ function App() {
     });
 
     formData.append("pasted_text", pastedText);
-    formData.append("reset_db", "true");
+    formData.append("pasted_text_name", savedDraftName);
 
     try {
       setIsUploading(true);
@@ -44,7 +73,12 @@ function App() {
         },
       });
 
-      setUploadMessage(`Ingestion complete. Stored ${response.data.total_chunks} chunks.`);
+      setUploadMessage(
+        `Ingestion complete. Stored ${response.data.total_chunks} chunks.`
+      );
+
+      setFiles([]);
+      fetchDocuments();
     } catch (error) {
       setUploadMessage("Upload failed. Check backend/server.");
     } finally {
@@ -84,34 +118,88 @@ function App() {
     }
   }
 
+  async function handleDeleteDocument(docId) {
+    try {
+      await axios.delete(`${API_BASE_URL}/documents/${docId}`);
+      fetchDocuments();
+    } catch (error) {
+      console.error("Failed to delete document");
+    }
+  }
+
   function clearChat() {
     setChatHistory([]);
     setAnswer("");
     setSources([]);
   }
 
+  function clearDraft() {
+    setPastedText("");
+    setSavedDraftName("My Notes");
+    localStorage.removeItem("rag_pasted_text");
+    localStorage.removeItem("rag_draft_name");
+  }
+
   return (
     <div className="app-container">
       <h1>RAG Document Q&A</h1>
       <p className="subtitle">
-        Upload files, paste text, and ask questions about your content.
+        Upload multiple files, save notes, and ask grounded questions about your content.
       </p>
+
+      <div className="card">
+        <h2>Saved Documents</h2>
+
+        {documents.length === 0 ? (
+          <p>No documents uploaded yet.</p>
+        ) : (
+          <div className="doc-list">
+            {documents.map((doc) => (
+              <div className="doc-item" key={doc.doc_id}>
+                <span>
+                  {doc.name} ({doc.source_type})
+                </span>
+                <button
+                  className="delete-btn"
+                  onClick={() => handleDeleteDocument(doc.doc_id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="card">
         <h2>Upload Content</h2>
 
         <input type="file" multiple onChange={handleFileChange} />
 
+        <p className="small-label">Saved text draft name</p>
+        <input
+          type="text"
+          value={savedDraftName}
+          onChange={(event) => setSavedDraftName(event.target.value)}
+          placeholder="Name your pasted notes"
+        />
+
         <textarea
-          rows="8"
+          rows="10"
           placeholder="Or paste text here..."
           value={pastedText}
           onChange={(event) => setPastedText(event.target.value)}
         />
 
-        <button onClick={handleUpload} disabled={isUploading}>
-          {isUploading ? "Uploading..." : "Ingest Content"}
-        </button>
+        <div className="button-row">
+          <button onClick={handleUpload} disabled={isUploading}>
+            {isUploading ? "Uploading..." : "Ingest Content"}
+          </button>
+
+          <button className="secondary-button" onClick={clearDraft}>
+            Clear Saved Text
+          </button>
+        </div>
 
         {uploadMessage && <p className="status-message">{uploadMessage}</p>}
       </div>
@@ -149,8 +237,7 @@ function App() {
             {sources.map((source, index) => (
               <details key={index} className="source-item">
                 <summary>
-                  {source.metadata?.source_name || "Unknown source"} — Chunk{" "}
-                  {source.metadata?.chunk_id ?? "N/A"}
+                  {source.source_label || source.metadata?.source_name || "Unknown source"}
                 </summary>
                 <p>{source.text}</p>
               </details>
@@ -158,21 +245,6 @@ function App() {
           </div>
         )}
       </div>
-
-      {chatHistory.length > 0 && (
-        <div className="card">
-          <h2>Conversation History</h2>
-          {chatHistory
-            .slice()
-            .reverse()
-            .map((item, index) => (
-              <details key={index} className="history-item">
-                <summary>{item.question}</summary>
-                <p>{item.answer}</p>
-              </details>
-            ))}
-        </div>
-      )}
     </div>
   );
 }
