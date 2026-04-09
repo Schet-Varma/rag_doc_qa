@@ -10,7 +10,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CHROMA_PATH = "chroma_db"
 COLLECTION_NAME = "rag_docs"
 
-
 def get_embedding(text):
     response = client.embeddings.create(
         model="text-embedding-3-small",
@@ -102,25 +101,25 @@ def answer_question(question, chat_history=None, k=4):
     history_text = build_history(chat_history)
 
     prompt = f"""
-You are a helpful document Q&A assistant.
+        You are a helpful document Q&A assistant.
 
-Answer the question using ONLY the context below.
-If the answer is not present in the context, say:
-"I could not find that in the uploaded content."
+        Answer the question using ONLY the context below.
+        If the answer is not present in the context, say:
+        "I could not find that in the uploaded content."
 
-Try to handle minor spelling mistakes or typos in the user's question when possible.
+        Try to handle minor spelling mistakes or typos in the user's question when possible.
 
-Keep the answer clear and short.
+        Keep the answer clear and short.
 
-Previous conversation:
-{history_text}
+        Previous conversation:
+        {history_text}
 
-Context:
-{context}
+        Context:
+        {context}
 
-Question:
-{question}
-"""
+        Question:
+        {question}
+    """
 
     response = client.responses.create(
         model="gpt-4.1-nano",
@@ -132,3 +131,4 @@ Question:
         "answer": response.output_text,
         "sources": retrieved_chunks
     }
+    
